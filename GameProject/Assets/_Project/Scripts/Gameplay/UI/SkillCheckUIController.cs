@@ -21,7 +21,12 @@ namespace Game.UI
         private float dir = 1f;
         private bool running;
 
-        public void Begin(Action<bool> onFinished)
+        public bool IsRunning => running;
+
+        public void Begin(
+            System.Action<bool> onFinished,
+            float? overrideSuccessZoneWidth = null,
+            bool randomizeZonePosition = true)
         {
             this.onFinished = onFinished;
             timeLeft = duration;
@@ -29,8 +34,33 @@ namespace Game.UI
             running = true;
             gameObject.SetActive(true);
 
-            // 시작 위치 왼쪽
+            // 성공 구간 폭 조절(없으면 프리팹 값 유지)
+            if (overrideSuccessZoneWidth.HasValue)
+            {
+                var size = successZone.sizeDelta;
+                size.x = overrideSuccessZoneWidth.Value;
+                successZone.sizeDelta = size;
+            }
+
+            // 성공 구간 위치 랜덤(바 범위 내)
+            if (randomizeZonePosition)
+            {
+                float half = bar.rect.width * 0.5f;
+                float zoneHalf = successZone.rect.width * 0.5f;
+                float x = UnityEngine.Random.Range(-half + zoneHalf, half - zoneHalf);
+
+                var p = successZone.anchoredPosition;
+                p.x = x;
+                successZone.anchoredPosition = p;
+            }
+
             SetNeedleX(-bar.rect.width * 0.5f);
+        }
+
+        public void Cancel()
+        {
+            if (!running) { gameObject.SetActive(false); }
+            Finish(false);
         }
 
         private void Update()
@@ -87,5 +117,6 @@ namespace Game.UI
             p.x = x;
             needle.anchoredPosition = p;
         }
+
     }
 }

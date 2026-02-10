@@ -24,7 +24,7 @@ namespace Game.Player
         private void Update()
         {
             if (nodeMover == null || psm == null) return;
-
+            if (!nodeMover.InputEnabled) return;
             // 이동 중이면 숨기 시작/해제 불가
             if (nodeMover.IsBusy) return;
 
@@ -50,6 +50,7 @@ namespace Game.Player
 
             // (선택) 이벤트
             EventBus.RaiseHideEntered();
+           
         }
 
         private void ExitHide()

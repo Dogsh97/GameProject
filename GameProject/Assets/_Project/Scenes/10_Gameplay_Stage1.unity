@@ -1968,10 +1968,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   node: {fileID: 0}
-  requiredSuccess: 3
-  currentSuccess: 0
-  unlockNodes:
-  - {fileID: 1861629251}
+  progress: 0
+  maxProgress: 100
+  passiveDecayPerSecond: 3
+  decayWhenNotRunning: 1
+  baseRate: 4
+  boostedRate: 7
+  decayRate: 1
+  failProgressLoss: 12
+  cancelProgressLoss: 6
+  retryCooldownOnFail: 2
+  retryCooldownOnCancel: 1
 --- !u!114 &1419775976
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2568,7 +2575,7 @@ Transform:
   m_GameObject: {fileID: 1925814616}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: -15}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3027,6 +3034,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 5843857921040425595, guid: e53ce8fee8b5a6b47946fe218276a740, type: 3}
+      propertyPath: respawnPoint
+      value: 
+      objectReference: {fileID: 1925814617}
     - target: {fileID: 5853490326745788663, guid: e53ce8fee8b5a6b47946fe218276a740, type: 3}
       propertyPath: m_Name
       value: Monster
@@ -3083,6 +3094,14 @@ PrefabInstance:
     - target: {fileID: 566411052535537591, guid: 2b772e9cde66f7f4bb4bc4e6ce915724, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2010994545293908027, guid: 2b772e9cde66f7f4bb4bc4e6ce915724, type: 3}
+      propertyPath: moveDelay
+      value: 0.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 2010994545293908027, guid: 2b772e9cde66f7f4bb4bc4e6ce915724, type: 3}
+      propertyPath: moveSpeed
+      value: 6
       objectReference: {fileID: 0}
     - target: {fileID: 9002225352339534956, guid: 2b772e9cde66f7f4bb4bc4e6ce915724, type: 3}
       propertyPath: m_Name
