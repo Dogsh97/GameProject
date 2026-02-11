@@ -13,11 +13,19 @@ namespace Game.Monster
         [SerializeField] private PlayerNodeMover player;
         [SerializeField] private Node currentNode;
         [SerializeField] private MonsterAggro aggroSystem;
+        [SerializeField] private PatrolPath patrolPath;
 
         [Header("Move")]
         [SerializeField] private float thinkInterval = 0.35f;
         [SerializeField] private float moveSpeed = 3.2f;
         [SerializeField] private float arriveDistance = 0.05f;
+
+
+        [Header("Patrol Influence")]
+        [SerializeField] private float patrolBias = 0.75f; // 0=완전 플레이어추적, 1=완전 패트롤
+        [SerializeField] private int patrolLookAhead = 3;  // 경로 앞으로 몇 칸까지 “가까워지는 노드” 후보로 볼지
+        [SerializeField] private float detourChanceAtHighAggro = 0.35f; // aggro 높을 때 경로 이탈 확률
+        [SerializeField] private bool followPatrolByDefault = true;
 
         [Header("Approach Rule")]
         [SerializeField] private float randomPickChance = 0.25f; // 예측 불가성
@@ -33,10 +41,14 @@ namespace Game.Monster
         private State state = State.Approaching;
         private Coroutine brain;
 
+        private int patrolIndex = 0;
+        private int patrolDir = 1; // 1 정방향, -1 역방향(필요하면 사용)
+
         private void Awake()
         {
             if (player == null) player = FindAnyObjectByType<PlayerNodeMover>();
             if (aggroSystem == null) aggroSystem = GetComponent<MonsterAggro>();
+            if (patrolPath == null) patrolPath = FindAnyObjectByType<PatrolPath>();
         }
 
         private void OnEnable()
@@ -53,6 +65,8 @@ namespace Game.Monster
         {
             if (currentNode == null)
                 AutoBindNearestNode(transform.position);
+
+            AlignPatrolIndexToCurrentNode();
 
             state = State.Approaching;
             brain = StartCoroutine(BrainLoop());
@@ -105,17 +119,18 @@ namespace Game.Monster
                     continue;
                 }
 
-                // 이동: “직추적”이 아니라 “점진 접근”
+                // 이동 선택
                 Node playerNode = player.CurrentNode;
                 if (playerNode != null)
                 {
-                    Node next = ChooseNextNodeApproach(currentNode, playerNode);
+                    Node next = ChooseNextNodeWithPatrol(currentNode, playerNode);
                     if (next != null && next != currentNode)
                     {
                         yield return MoveToNode(next);
                         currentNode = next;
                     }
                 }
+
 
                 yield return new WaitForSeconds(thinkInterval);
             }
@@ -250,5 +265,126 @@ namespace Game.Monster
                 transform.position = best.Position;
             }
         }
+        private void AlignPatrolIndexToCurrentNode()
+        {
+            if (patrolPath == null || !patrolPath.IsValid || currentNode == null) return;
+
+            var list = patrolPath.PathNodes;
+            int best = 0;
+            float bestDist = float.MaxValue;
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i] == null) continue;
+                float d = Vector3.Distance(currentNode.Position, list[i].Position);
+                if (d < bestDist) { bestDist = d; best = i; }
+            }
+
+            patrolIndex = best;
+        }
+
+        private Node ChooseNextNodeWithPatrol(Node from, Node playerNode)
+        {
+            float a01 = aggroSystem != null ? Mathf.Clamp01(aggroSystem.Aggro / 100f) : 0f;
+
+            bool hasPatrol = patrolPath != null && patrolPath.IsValid && followPatrolByDefault;
+
+            // 1) 소음 interestNode가 있고 유지 시간 내면: 고어그로일수록 detour 우선
+            //bool hasInterest = interestNode != null && (Time.time - lastInterestTime <= interestHoldTime);
+            //if (hasInterest && Random.value < Mathf.Lerp(0.15f, 0.75f, a01))
+            //    return ChooseNextNodeApproach(from, interestNode);
+
+            // 2) 헌트(aggro 높음)면 경로 이탈 확률 증가(플레이어 쪽 압박 강화)
+            if (Random.value < Mathf.Lerp(0.05f, detourChanceAtHighAggro, a01))
+                return ChooseNextNodeApproach(from, playerNode);
+
+            // 3) 기본: Patrol 기반(경로 다음 vs 경로 스킵 중 플레이어에 가까운 것)
+            if (hasPatrol)
+            {
+                Node patrolNext = GetNextPatrolNode();
+                Node patrolBestAhead = GetBestPatrolNodeAheadTowardPlayer(playerNode);
+
+                // a01 낮으면 patrolBias 높게(패트롤 위주), 높으면 patrolBias 낮게(플레이어 압박 위주)
+                float dynamicBias = Mathf.Lerp(0.9f, 0.45f, a01);
+                Node chosen = (Random.value < dynamicBias) ? patrolNext : patrolBestAhead;
+                // patrolBias가 높을수록 “그냥 경로대로”, 낮을수록 “플레이어 가까운 경로 노드”로
+                //Node chosen = (Random.value < patrolBias) ? patrolNext : patrolBestAhead;
+
+                // chosen이 null이면 fallback
+                if (chosen == null) chosen = patrolNext;
+                if (chosen == null) chosen = from;
+
+                // 경로 노드로 바로 점프하지 말고, 실제 이동은 인접 노드로 한 칸씩 (노드 그래프 유지)
+                // chosen까지 가는 방향으로 “한 칸” 선택(그리디)
+                return ChooseNextNodeApproach(from, chosen);
+            }
+
+            // 4) Patrol이 없으면 기존 접근 로직
+            return ChooseNextNodeApproach(from, playerNode);
+        }
+
+        private Node GetNextPatrolNode()
+        {
+            if (patrolPath == null || !patrolPath.IsValid) return null;
+
+            var list = patrolPath.PathNodes;
+            int next = patrolIndex + patrolDir;
+
+            if (patrolPath.Loop)
+            {
+                if (next >= list.Count) next = 0;
+                if (next < 0) next = list.Count - 1;
+            }
+            else
+            {
+                // 루프가 아니면 끝에서 방향 반전
+                if (next >= list.Count) { patrolDir = -1; next = list.Count - 2; }
+                if (next < 0) { patrolDir = 1; next = 1; }
+            }
+
+            patrolIndex = next;
+            return list[patrolIndex];
+        }
+
+        private Node GetBestPatrolNodeAheadTowardPlayer(Node playerNode)
+        {
+            if (patrolPath == null || !patrolPath.IsValid || playerNode == null) return null;
+
+            var list = patrolPath.PathNodes;
+            int count = list.Count;
+
+            Node best = null;
+            float bestDist = float.MaxValue;
+
+            // “현재 인덱스 기준 앞으로 patrolLookAhead칸”에서 플레이어에 가장 가까운 경로 노드 선택
+            for (int step = 1; step <= Mathf.Max(1, patrolLookAhead); step++)
+            {
+                int idx = patrolIndex + step * patrolDir;
+
+                if (patrolPath.Loop)
+                {
+                    idx %= count;
+                    if (idx < 0) idx += count;
+                }
+                else
+                {
+                    if (idx < 0 || idx >= count) break;
+                }
+
+                Node n = list[idx];
+                if (n == null || !n.IsActive) continue;
+
+                float d = Vector3.Distance(n.Position, playerNode.Position);
+                if (d < bestDist)
+                {
+                    bestDist = d;
+                    best = n;
+                }
+            }
+
+            // 후보가 없으면 그냥 다음 노드
+            return best ?? list[patrolIndex];
+        }
+
     }
 }

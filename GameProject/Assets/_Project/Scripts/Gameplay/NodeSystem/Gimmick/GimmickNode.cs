@@ -1,5 +1,6 @@
-using UnityEngine;
 using Game.NodeSystem;
+using System.Collections.Generic;
+using UnityEngine;
 
 namespace Game.Gimmick
 {
@@ -26,7 +27,12 @@ namespace Game.Gimmick
         [SerializeField] private float cancelProgressLoss = 6f; // E로 중단 시 즉시 감소량
         [SerializeField] private float retryCooldownOnFail = 2.0f; // 실패 후 재시도 딜레이
         [SerializeField] private float retryCooldownOnCancel = 1.0f;
+        
+        [Header("Results")]
+        [SerializeField] private List<Node> unlockNodes = new(); // 완료 시 열릴 노드들
 
+        public IReadOnlyList<Node> UnlockNodes => unlockNodes;
+       
         public Node Node => node;
 
         public float Progress => progress;
@@ -58,6 +64,8 @@ namespace Game.Gimmick
         {
             if (IsCompleted) return;
             progress = Mathf.Clamp(progress + amount, 0f, maxProgress);
+            if (IsCompleted)
+                ApplyUnlock();
         }
 
         public void ApplyFailPenalty()
@@ -68,6 +76,15 @@ namespace Game.Gimmick
         public void ApplyCancelPenalty()
         {
             progress = Mathf.Clamp(progress - cancelProgressLoss, 0f, maxProgress);
+        }
+
+        private void ApplyUnlock()
+        {
+            for (int i = 0; i < unlockNodes.Count; i++)
+            {
+                if (unlockNodes[i] == null) continue;
+                unlockNodes[i].SetActive(true);
+            }
         }
     }
 }

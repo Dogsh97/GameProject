@@ -161,7 +161,7 @@ namespace Game.Player
                 Debug.Log("[Gimmick] Completed (Progress=100)");
                 // 너가 A에서 언락은 GimmickNode 완료 처리로 붙였으면 여기서도 이어짐.
                 EventBus.RaiseGimmickCompleted(gimmick);
-                EventBus.RaiseNoise(transform.position, 0.2f);
+                //EventBus.RaiseNoise(transform.position, 0.2f);
             }
 
             EndSession(goIdle: true);
