@@ -179,7 +179,7 @@ namespace Game.CameraSystem
             isMoving = false;
 
             // 도착 시 기본 방향으로 자동 정렬
-            TryStartAutoAlignToCurrentNode();
+            //TryStartAutoAlignToCurrentNode();
 
             // 도착 직후 중심도 기본 방향으로 맞춤(정렬 끝나면 업데이트됨)
         }
