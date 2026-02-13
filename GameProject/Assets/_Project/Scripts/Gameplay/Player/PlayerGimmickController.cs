@@ -9,19 +9,28 @@ namespace Game.Player
     [DisallowMultipleComponent]
     public class PlayerGimmickController : MonoBehaviour
     {
+        [Header("입력 설정")]
+        [Tooltip("기믹 상호작용 및 중단에 사용되는 키 (기본: E)")]
         [SerializeField] private KeyCode interactKey = KeyCode.E;
+        [Tooltip("스킬 체크 미니게임을 관리하는 UI 컨트롤러")]
         [SerializeField] private SkillCheckUIController skillCheckUI;
 
-        [Header("SkillCheck Timing")]
+        [Header("스킬 체크 타이밍")]
+        [Tooltip("스킬 체크가 발생하는 기본 간격(초)")]
         [SerializeField] private float checkBaseInterval = 2.2f;
-        [SerializeField] private float checkRandomJitter = 0.6f; // +- 오차
-        [SerializeField] private float checkMinInterval = 0.7f;  // 진행할수록 하한으로 수렴
+        [Tooltip("타이밍의 무작위성 오차 범위 (+- 초)")]
+        [SerializeField] private float checkRandomJitter = 0.6f;// +- 오차
+        [Tooltip("기믹 진행도가 높아질 때 수렴하는 최소 간격(초)")]
+        [SerializeField] private float checkMinInterval = 0.7f;// 진행할수록 하한으로 수렴
 
-        [Header("Difficulty Scaling")]
+        [Header("난이도 조절")]
+        [Tooltip("시작 시 성공 구간의 너비 (픽셀 단위)")]
         [SerializeField] private float zoneWidthStart = 220f; // px
-        [SerializeField] private float zoneWidthEnd = 120f;   // px (진행할수록 축소)
+        [Tooltip("완료 직전 성공 구간의 너비 (픽셀 단위, 진행될수록 축소됨)")]
+        [SerializeField] private float zoneWidthEnd = 120f; // px (진행할수록 축소)
 
-        [Header("Monster Gate (조건)")]
+        [Header("몬스터 제한 조건")]
+        [Tooltip("몬스터가 이 거리 안에 있으면 기믹을 시작할 수 없음 (공격 사거리 근사치)")]
         [SerializeField] private float forbidIfMonsterWithin = 1.2f; // “즉시 공격 가능 상태” 근사치
 
         private PlayerNodeMover nodeMover;

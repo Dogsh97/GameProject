@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using UnityEngine;
 using Game.NodeSystem;
@@ -25,7 +26,10 @@ namespace Game.Player
         
         public bool IsBusy => state != MoveState.Idle;
         public bool InputEnabled { get; set; } = true;
-        public Game.NodeSystem.Node CurrentNode => currentNode;
+        public Node CurrentNode => currentNode;
+
+        public event Action OnMoveStarted;
+        public event Action OnMoveFinished;
 
         private void Awake()
         {
@@ -114,7 +118,7 @@ namespace Game.Player
                 t += Time.deltaTime;
                 yield return null;
             }
-
+            OnMoveStarted?.Invoke();
             // 2) Move
             state = MoveState.Moving;
 
@@ -127,7 +131,7 @@ namespace Game.Player
 
             transform.position = dest;
             currentNode = target;
-
+            OnMoveFinished?.Invoke();
             // 3) Done
             state = MoveState.Idle;
             moveRoutine = null;
