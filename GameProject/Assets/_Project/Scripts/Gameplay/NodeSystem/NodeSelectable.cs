@@ -2,7 +2,6 @@ using UnityEngine;
 
 namespace Game.NodeSystem
 {
-    [RequireComponent(typeof(Collider))]
     public class NodeSelectable : MonoBehaviour
     {
         [SerializeField] private Node node;

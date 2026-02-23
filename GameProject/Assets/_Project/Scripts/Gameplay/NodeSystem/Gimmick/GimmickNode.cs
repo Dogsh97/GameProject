@@ -17,18 +17,21 @@ namespace Game.Gimmick
         [SerializeField] private bool decayWhenNotRunning = true;
         public bool IsRunning { get; set; } // 세션에서 true로 세팅
 
-        [Header("Rates")]
+        [Header("증감률")]
+        [Tooltip("기본 초당 상승")]
         [SerializeField] private float baseRate = 4f;       // 기본 초당 상승(스킬체크 전/실패 후)
+        [Tooltip("스킬체크 성공 후 초당 상승")]
         [SerializeField] private float boostedRate = 7f;    // 스킬체크 성공 후 초당 상승
+        [Tooltip("중단 시 초당 감소")]
         [SerializeField] private float decayRate = 6f;      // 중단 시 초당 감소
 
-        [Header("Penalties")]
+        [Header("기믹 패널티")]
         [SerializeField] private float failProgressLoss = 12f; // 실패 시 즉시 감소량
         [SerializeField] private float cancelProgressLoss = 6f; // E로 중단 시 즉시 감소량
         [SerializeField] private float retryCooldownOnFail = 2.0f; // 실패 후 재시도 딜레이
         [SerializeField] private float retryCooldownOnCancel = 1.0f;
         
-        [Header("Results")]
+        [Header("해방 노드")]
         [SerializeField] private List<Node> unlockNodes = new(); // 완료 시 열릴 노드들
 
         public IReadOnlyList<Node> UnlockNodes => unlockNodes;
