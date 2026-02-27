@@ -20,10 +20,6 @@ namespace Game.CameraSystem
         [Header("회전 입력 설정")]
         [Tooltip("초당 회전 속도 (도 단위)")]
         [SerializeField] private float yawSpeedDegPerSec = 90f;
-        [Tooltip("카메라 상하 최소 각도")]
-        [SerializeField] private float pitchMin = -10f;
-        [Tooltip("카메라 상하 최대 각도")]
-        [SerializeField] private float pitchMax = 10f;
 
         [Header("회전 제한 (대기 상태)")]
         [Tooltip("대기 중 좌우 회전 가능 범위 (중심 기준)")]
@@ -51,30 +47,27 @@ namespace Game.CameraSystem
         [Tooltip("노드 도착 후 정면을 바라보는 데 걸리는 시간")]
         [SerializeField] private float alignDuration = 0.25f;
 
-        [Header("이동 중 흔들림 (Move Shake)")]
-        [Tooltip("흔들림의 강도 (각도)")]
-        [SerializeField] private float shakeAmplitudeDeg = 0.7f;
+        [Header("이동 중 Burst 흔들림 (Move Shake) - 부드럽게")]
+        [Tooltip("버스트 흔들림 강도(각도). 너무 크면 멀미남. 추천 0.1~0.25")]
+        [SerializeField] private float shakeAmplitudeDeg = 0.2f;
         [Tooltip("한 번의 흔들림(Burst)이 지속되는 시간")]
-        [SerializeField] private float shakeBurstDuration = 0.18f;
-        [Tooltip("흔들림 사이의 최소 간격")]
-        [SerializeField] private float shakeBurstIntervalMin = 0.22f;
-        [Tooltip("흔들림 사이의 최대 간격")]
-        [SerializeField] private float shakeBurstIntervalMax = 0.6f;
+        [SerializeField] private float shakeBurstDuration = 0.12f;
+        [Tooltip("흔들림 사이 최소 간격")]
+        [SerializeField] private float shakeBurstIntervalMin = 0.4f;
+        [Tooltip("흔들림 사이 최대 간격")]
+        [SerializeField] private float shakeBurstIntervalMax = 0.9f;
+        [Tooltip("흔들림 페이드 속도 (클수록 더 빨리/부드럽게 따라감)")]
+        [SerializeField] private float shakeFadeSpeed = 12f;
 
-        [Header("이동 중 Bob (상하 반복)")]
-        [SerializeField] private float bobAmplitudeDeg = 1.5f;   // 상하 진폭 (각도)
-        [SerializeField] private float bobFrequency = 2.0f;      // 초당 반복 횟수
+        [Header("이동 중 Bob (걷기 상하 반복)")]
+        [Tooltip("상하 진폭(각도). 추천 0.3~0.6")]
+        [SerializeField] private float bobAmplitudeDeg = 0.5f;
+        [Tooltip("초당 반복 횟수. 추천 1.6~2.2")]
+        [SerializeField] private float bobFrequency = 1.8f;
+        [Tooltip("이동 시작/끝 bob이 켜지고 꺼지는 속도")]
+        [SerializeField] private float bobWeightSpeed = 6f;
+
         private float bobTimer = 0f;
-
-        [Header("이동 흔들림 스무딩")]
-        [SerializeField] private float shakeFadeSpeed = 12f; // 숫자 클수록 빨리 부드럽게 따라감
-
-        private float shakeCurrentYaw;
-        private float shakeCurrentPitch;
-        private float shakeTargetYaw;
-        private float shakeTargetPitch;
-
-        private float bobWeight; // 0~1 (이동중 1, 멈추면 0)
 
         private float yaw;   // 현재 yaw(월드 기준)
         private float pitch; // 로컬 pitch
@@ -88,8 +81,19 @@ namespace Game.CameraSystem
 
         private float shakeTimer;
         private float nextShakeTime;
+
+        // 최종 적용 오프셋
         private float shakeOffsetYaw;
         private float shakeOffsetPitch;
+
+        // 부드러운 흔들림을 위한 현재/목표 값
+        private float shakeCurrentYaw;
+        private float shakeCurrentPitch;
+        private float shakeTargetYaw;
+        private float shakeTargetPitch;
+
+        // bob on/off 가중치
+        private float bobWeight;
 
         private void Awake()
         {
@@ -133,10 +137,7 @@ namespace Game.CameraSystem
             float targetFov = baseFov;
             if (isMoving) targetFov = movingFov;
 
-            // 기믹(스킬체크) 중이면 추가 축소
-            // (PlayerStateMachine의 Gimmick 상태에서 NodeMover.InputEnabled=false라 했으니,
-            //  여기서는 "InputEnabled=false && !isMoving"로 기믹 상태를 근사하거나,
-            //  더 정확히는 psm.CurrentState를 노출해서 체크하면 됨.
+            // 기믹(스킬체크) 근사: 입력이 꺼져있고 이동 중이 아니면
             bool inGimmick = (psm != null && nodeMover != null && !nodeMover.InputEnabled && !isMoving);
             if (inGimmick) targetFov = gimmickFov;
 
@@ -157,18 +158,17 @@ namespace Game.CameraSystem
             if (Input.GetMouseButton(1)) input += 1f; // 우
             yaw += input * yawSpeedDegPerSec * Time.deltaTime;
 
-            // 상하 회전은 “제한됨”이라 기본은 거의 안 쓰지만, 나중에 확장 가능
-            // 여기서는 pitch를 센터로 고정/클램프만 유지
+            // 상하는 지금은 “제한”만 (확장 가능)
             pitch = Mathf.Clamp(pitch, pitchMinDyn, pitchMaxDyn);
 
             // 4) 제한: yaw는 center 기준 범위 내로 clamp
             float halfYaw = yawRange * 0.5f;
             yaw = ClampAngleAroundCenter(yaw, yawCenter, -halfYaw, halfYaw);
 
-            // 5) 이동 중 흔들림(짧고 불규칙한 burst)
+            // 5) 이동 흔들림(부드러운 burst + bob)
             UpdateShake();
 
-            // 6) 노드 도착 자동 정렬(짧은 지연 회전)
+            // 6) 노드 도착 자동 정렬
             UpdateAutoAlign();
 
             // 7) 적용
@@ -183,8 +183,10 @@ namespace Game.CameraSystem
             yawCenter = yaw;
             pitchCenter = pitch;
 
-            // 이동 중 상하 거의 고정
+            // 이동 중 상하는 거의 고정
             pitch = 0f;
+
+            // bob을 깔끔하게 시작
             bobTimer = 0f;
 
             ScheduleNextShake();
@@ -196,8 +198,6 @@ namespace Game.CameraSystem
 
             // 도착 시 기본 방향으로 자동 정렬
             TryStartAutoAlignToCurrentNode();
-
-            // 도착 직후 중심도 기본 방향으로 맞춤(정렬 끝나면 업데이트됨)
         }
 
         private void TryStartAutoAlignToCurrentNode()
@@ -209,14 +209,11 @@ namespace Game.CameraSystem
             NodeLook look = cur.GetComponent<NodeLook>();
             Vector3 forward = (look != null) ? look.Forward : cur.transform.forward;
 
-            // 목표 yaw 계산
             float targetYaw = Quaternion.LookRotation(forward, Vector3.up).eulerAngles.y;
 
             alignStartYaw = yaw;
             alignTargetYaw = targetYaw;
             alignTimer = alignDuration;
-
-            // 정렬 중엔 제한 중심도 target 쪽으로 유도
         }
 
         private void UpdateAutoAlign()
@@ -228,7 +225,6 @@ namespace Game.CameraSystem
 
             yaw = Mathf.LerpAngle(alignStartYaw, alignTargetYaw, t);
 
-            // 정렬이 끝나면 중심 갱신
             if (alignTimer <= 0f)
             {
                 yawCenter = yaw;
@@ -240,29 +236,31 @@ namespace Game.CameraSystem
         {
             if (!isMoving)
             {
-                // 이동 아닐 때는 목표를 0으로 두고 부드럽게 0으로 돌아가게
+                // 이동 아닐 때: 목표를 0으로 두고 부드럽게 0으로 복귀
                 shakeTargetYaw = 0f;
                 shakeTargetPitch = 0f;
 
-                bobWeight = Mathf.MoveTowards(bobWeight, 0f, Time.deltaTime * 6f);
+                bobWeight = Mathf.MoveTowards(bobWeight, 0f, Time.deltaTime * bobWeightSpeed);
             }
             else
             {
-                bobWeight = Mathf.MoveTowards(bobWeight, 1f, Time.deltaTime * 6f);
+                bobWeight = Mathf.MoveTowards(bobWeight, 1f, Time.deltaTime * bobWeightSpeed);
 
-                // 버스트 발생
+                // 버스트 시작
                 if (Time.time >= nextShakeTime && shakeTimer <= 0f)
                 {
                     shakeTimer = shakeBurstDuration;
 
-                    // 추천: 버스트는 yaw(좌우) 위주, pitch는 아주 약하게(또는 0)
+                    //버스트는 yaw(좌우) 위주
                     shakeTargetYaw = Random.Range(-shakeAmplitudeDeg, shakeAmplitudeDeg);
+
+                    //pitch 랜덤은 매우 약하게(멀미 방지) 또는 0으로 해도 됨
                     shakeTargetPitch = Random.Range(-shakeAmplitudeDeg * 0.25f, shakeAmplitudeDeg * 0.25f);
 
                     ScheduleNextShake();
                 }
 
-                // 버스트 시간이 끝나면 목표를 0으로 (근데 부드럽게 돌아감)
+                // 버스트 끝나면 목표를 0으로 (부드럽게 돌아감)
                 if (shakeTimer > 0f)
                 {
                     shakeTimer -= Time.deltaTime;
@@ -274,11 +272,11 @@ namespace Game.CameraSystem
                 }
             }
 
-            // 목표값으로 부드럽게 따라가게 (툭툭 튐 방지)
+            //목표값으로 부드럽게 따라가기 (툭툭 튐 방지)
             shakeCurrentYaw = Mathf.Lerp(shakeCurrentYaw, shakeTargetYaw, shakeFadeSpeed * Time.deltaTime);
             shakeCurrentPitch = Mathf.Lerp(shakeCurrentPitch, shakeTargetPitch, shakeFadeSpeed * Time.deltaTime);
 
-            // Bob(상하 반복) - pitch에만 주고, 이동 아닐 땐 weight로 0에 수렴
+            //bob은 pitch에만
             bobTimer += Time.deltaTime;
             float bob = Mathf.Sin(bobTimer * bobFrequency * Mathf.PI * 2f) * bobAmplitudeDeg * bobWeight;
 
