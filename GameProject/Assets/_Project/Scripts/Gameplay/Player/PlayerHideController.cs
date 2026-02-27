@@ -24,7 +24,7 @@ namespace Game.Player
         private void Update()
         {
             if (nodeMover == null || psm == null) return;
-            if (!nodeMover.InputEnabled) return;
+            //if (!nodeMover.InputEnabled) return; //나중에 따로 조건 걸리면 Hidingstate 확인.
             // 이동 중이면 숨기 시작/해제 불가
             if (nodeMover.IsBusy) return;
 

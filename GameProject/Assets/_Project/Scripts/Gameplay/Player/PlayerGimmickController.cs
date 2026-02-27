@@ -69,7 +69,7 @@ namespace Game.Player
                 if (!inSession) TryStart();
                 else StopByPlayer();
             }
-            Debug.Log($"timeScale={Time.timeScale}, now={Time.time}, cooldownEnd={cooldownEndTime}");
+            //Debug.Log($"timeScale={Time.timeScale}, now={Time.time}, cooldownEnd={cooldownEndTime}");
         }
 
         private void TryStart()

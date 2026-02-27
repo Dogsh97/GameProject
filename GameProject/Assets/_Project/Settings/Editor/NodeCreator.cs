@@ -65,13 +65,14 @@ public class NodeCreator
 
         newObj.AddComponent<Node>();
         newObj.AddComponent<NodeSelectable>();
+        newObj.AddComponent<NodeLook>();
 
         if (addHideSpot) newObj.AddComponent<HideSpot>();
         if (addGimmick) newObj.AddComponent<GimmickNode>();
 
         BoxCollider boxCollider = newObj.AddComponent<BoxCollider>();
-        boxCollider.size = new Vector3(5f, 5f, 5f);
-        boxCollider.center = new Vector3(0f, 2.5f, 0f);
+        boxCollider.size = new Vector3(5f, 0.05f, 5f);
+        boxCollider.center = new Vector3(0f, 0.1f, 0f);
 
         Undo.RegisterCreatedObjectUndo(newObj, "Create Node");
         Selection.activeGameObject = newObj;

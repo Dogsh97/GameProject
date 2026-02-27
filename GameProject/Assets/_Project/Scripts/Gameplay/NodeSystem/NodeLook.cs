@@ -5,7 +5,7 @@ namespace Game.NodeSystem
     [DisallowMultipleComponent]
     public class NodeLook : MonoBehaviour
     {
-        [Tooltip("도착 시 카메라가 이 방향을 바라보도록 정렬됨(월드 기준)")]
+        [Tooltip("도착 시 카메라가 이 방향을 바라보도록 정렬됨(월드 기준) Z축 방향을 바라봄")]
         [SerializeField] private Transform lookForward;
 
         public Vector3 Forward
