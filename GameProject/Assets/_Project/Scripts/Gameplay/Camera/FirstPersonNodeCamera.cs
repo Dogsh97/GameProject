@@ -61,6 +61,21 @@ namespace Game.CameraSystem
         [Tooltip("흔들림 사이의 최대 간격")]
         [SerializeField] private float shakeBurstIntervalMax = 0.6f;
 
+        [Header("이동 중 Bob (상하 반복)")]
+        [SerializeField] private float bobAmplitudeDeg = 1.5f;   // 상하 진폭 (각도)
+        [SerializeField] private float bobFrequency = 2.0f;      // 초당 반복 횟수
+        private float bobTimer = 0f;
+
+        [Header("이동 흔들림 스무딩")]
+        [SerializeField] private float shakeFadeSpeed = 12f; // 숫자 클수록 빨리 부드럽게 따라감
+
+        private float shakeCurrentYaw;
+        private float shakeCurrentPitch;
+        private float shakeTargetYaw;
+        private float shakeTargetPitch;
+
+        private float bobWeight; // 0~1 (이동중 1, 멈추면 0)
+
         private float yaw;   // 현재 yaw(월드 기준)
         private float pitch; // 로컬 pitch
         private float yawCenter; // 제한 중심
@@ -170,6 +185,7 @@ namespace Game.CameraSystem
 
             // 이동 중 상하 거의 고정
             pitch = 0f;
+            bobTimer = 0f;
 
             ScheduleNextShake();
         }
@@ -224,31 +240,50 @@ namespace Game.CameraSystem
         {
             if (!isMoving)
             {
-                shakeOffsetYaw = 0f;
-                shakeOffsetPitch = 0f;
-                return;
+                // 이동 아닐 때는 목표를 0으로 두고 부드럽게 0으로 돌아가게
+                shakeTargetYaw = 0f;
+                shakeTargetPitch = 0f;
+
+                bobWeight = Mathf.MoveTowards(bobWeight, 0f, Time.deltaTime * 6f);
             }
-
-            if (Time.time >= nextShakeTime && shakeTimer <= 0f)
+            else
             {
-                shakeTimer = shakeBurstDuration;
+                bobWeight = Mathf.MoveTowards(bobWeight, 1f, Time.deltaTime * 6f);
 
-                // burst마다 랜덤 오프셋(짧고 불규칙)
-                shakeOffsetYaw = Random.Range(-shakeAmplitudeDeg, shakeAmplitudeDeg);
-                shakeOffsetPitch = Random.Range(-shakeAmplitudeDeg, shakeAmplitudeDeg);
-
-                ScheduleNextShake();
-            }
-
-            if (shakeTimer > 0f)
-            {
-                shakeTimer -= Time.deltaTime;
-                if (shakeTimer <= 0f)
+                // 버스트 발생
+                if (Time.time >= nextShakeTime && shakeTimer <= 0f)
                 {
-                    shakeOffsetYaw = 0f;
-                    shakeOffsetPitch = 0f;
+                    shakeTimer = shakeBurstDuration;
+
+                    // 추천: 버스트는 yaw(좌우) 위주, pitch는 아주 약하게(또는 0)
+                    shakeTargetYaw = Random.Range(-shakeAmplitudeDeg, shakeAmplitudeDeg);
+                    shakeTargetPitch = Random.Range(-shakeAmplitudeDeg * 0.25f, shakeAmplitudeDeg * 0.25f);
+
+                    ScheduleNextShake();
+                }
+
+                // 버스트 시간이 끝나면 목표를 0으로 (근데 부드럽게 돌아감)
+                if (shakeTimer > 0f)
+                {
+                    shakeTimer -= Time.deltaTime;
+                    if (shakeTimer <= 0f)
+                    {
+                        shakeTargetYaw = 0f;
+                        shakeTargetPitch = 0f;
+                    }
                 }
             }
+
+            // 목표값으로 부드럽게 따라가게 (툭툭 튐 방지)
+            shakeCurrentYaw = Mathf.Lerp(shakeCurrentYaw, shakeTargetYaw, shakeFadeSpeed * Time.deltaTime);
+            shakeCurrentPitch = Mathf.Lerp(shakeCurrentPitch, shakeTargetPitch, shakeFadeSpeed * Time.deltaTime);
+
+            // Bob(상하 반복) - pitch에만 주고, 이동 아닐 땐 weight로 0에 수렴
+            bobTimer += Time.deltaTime;
+            float bob = Mathf.Sin(bobTimer * bobFrequency * Mathf.PI * 2f) * bobAmplitudeDeg * bobWeight;
+
+            shakeOffsetYaw = shakeCurrentYaw;
+            shakeOffsetPitch = shakeCurrentPitch + bob;
         }
 
         private void ScheduleNextShake()
