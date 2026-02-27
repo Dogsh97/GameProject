@@ -15,6 +15,8 @@ namespace Game.Monster
         [SerializeField] private MonsterAggro aggroSystem;
         [SerializeField] private PatrolPath patrolPath;
 
+        [SerializeField] private EnemyFootstep footStepSound;
+
         [Header("Move")]
         [SerializeField] private float thinkInterval = 0.35f;
         [SerializeField] private float moveSpeed = 3.2f;
@@ -37,6 +39,7 @@ namespace Game.Monster
         [Header("Disable/Respawn")]
         [SerializeField] private Transform respawnPoint;
         [SerializeField] private float defaultDisableDuration = 6.0f;
+         
 
         private State state = State.Approaching;
         private Coroutine brain;
@@ -49,6 +52,8 @@ namespace Game.Monster
             if (player == null) player = FindAnyObjectByType<PlayerNodeMover>();
             if (aggroSystem == null) aggroSystem = GetComponent<MonsterAggro>();
             if (patrolPath == null) patrolPath = FindAnyObjectByType<PatrolPath>();
+            
+            if (footStepSound== null) footStepSound = FindAnyObjectByType<EnemyFootstep>();
         }
 
         private void OnEnable()
@@ -199,6 +204,11 @@ namespace Game.Monster
             while (Vector3.Distance(transform.position, dest) > arriveDistance)
             {
                 transform.position = Vector3.MoveTowards(transform.position, dest, moveSpeed * Time.deltaTime);
+
+                // 이동 중에만 발소리 재생, 사운드 추가.
+                footStepSound.SetWalking(true);
+
+
                 yield return null;
             }
             transform.position = dest;

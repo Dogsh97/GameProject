@@ -8,9 +8,9 @@ public class EnemyFootstep : MonoBehaviour
     [Header("발소리 간격 (초)")]
     public float stepInterval = 0.5f;
 
-    [Header("볼륨 범위 (자연스럽게)")]
-    public float minVolume = 0.8f;
-    public float maxVolume = 1.0f;
+    //[Header("볼륨 범위 (자연스럽게)")]
+    //public float minVolume = 0.8f;
+    //public float maxVolume = 1.0f;
 
     AudioSource audioSource;
     float stepTimer = 0f;
@@ -42,13 +42,14 @@ public class EnemyFootstep : MonoBehaviour
 
     void PlayFootstep()
     {
+        if (audioSource.isPlaying) return;
         if (footstepClips.Length == 0) return;
 
         // 랜덤 클립 선택
         AudioClip clip = footstepClips[Random.Range(0, footstepClips.Length)];
-        float volume = Random.Range(minVolume, maxVolume);
+        //float volume = Random.Range(minVolume, maxVolume);
 
-        audioSource.PlayOneShot(clip, volume);
+        audioSource.Play();
     }
 
     // 외부(적 AI 스크립트)에서 호출
