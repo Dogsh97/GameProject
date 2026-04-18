@@ -2623,6 +2623,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   pausePanel: {fileID: 1485977694}
+  MainAudioMixer: {fileID: 24100000, guid: 1601900c0e9484047b8423443022b8da, type: 2}
 --- !u!4 &873616606
 Transform:
   m_ObjectHideFlags: 0
