@@ -48,20 +48,15 @@ namespace Game.Player
 
         private void Update()
         {
-            if (!InputEnabled)
-            {
-                HideMoveIndicator();
-                return;
-            }
 
-            // 호버: 이동 가능 노드 위 심볼 표시
-            UpdateHoverIndicator();
-
-            // Legacy Input: 좌클릭
+            if (!InputEnabled) return;
+            if (InGameMenuController.isPaused) return; //메뉴 활성화 시 게임 멈춤
+            // Legacy Input: ��Ŭ��
             if (Input.GetMouseButtonDown(0))
                 TrySelectNodeByClick();
 
-            // 취소(우클릭 or ESC) : 이동 딜레이 중일 경우 취소 (계획된 기능)
+            // ���(��Ŭ�� or ESC) : ������ �߿��� ��� ���� (��ȹ�� ����)
+
             if (state == MoveState.Delay && (Input.GetMouseButtonDown(1) || Input.GetKeyDown(KeyCode.Escape)))
                 CancelMove();
         }
