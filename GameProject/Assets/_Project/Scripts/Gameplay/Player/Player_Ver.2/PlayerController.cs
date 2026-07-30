@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using System.Collections.Generic;
 
 namespace Game.Player
 {
@@ -31,6 +32,14 @@ namespace Game.Player
         public PlayerNode CurrentNode => currentNode;
 
         public State CurrentState => state;
+        public System.Action<PlayerNode> OnNodeChanged;
+
+        private PlayerNode[] allNodes;
+
+        private void Awake()
+        {
+            allNodes = FindObjectsOfType<PlayerNode>();
+        }
 
         private void Start()
         {
@@ -44,7 +53,14 @@ namespace Game.Player
             currentNode = startNode;
             transform.position = currentNode.Position;
 
+            foreach (PlayerNode node in allNodes)
+            {
+                node.OnSelected += HandleNodeSelected;
+            }
+
             state = State.Idle;
+
+            OnNodeChanged?.Invoke(currentNode);
         }
 
         public bool MoveToNode(PlayerNode targetNode)
@@ -81,6 +97,8 @@ namespace Game.Player
                 yield return null;
             }
 
+            transform.position = destination;
+
             Arrive(targetNode);
         }
 
@@ -100,6 +118,21 @@ namespace Game.Player
                 rotationSpeed * Time.deltaTime);
         }
 
+
+        private void HandleNodeSelected(PlayerNode node)
+        {
+            MoveToNode(node);
+        }
+
+        private void OnDestroy()
+        {
+            foreach (PlayerNode node in allNodes)
+            {
+                if (node != null)
+                    node.OnSelected -= HandleNodeSelected;
+            }
+        }
+
         private void Arrive(PlayerNode node)
         {
             transform.position = node.Position;
@@ -107,6 +140,8 @@ namespace Game.Player
             currentNode = node;
 
             state = State.Idle;
+
+            OnNodeChanged?.Invoke(currentNode);
         }
     }
 }
