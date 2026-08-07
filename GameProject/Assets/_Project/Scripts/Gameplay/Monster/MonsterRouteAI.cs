@@ -134,6 +134,8 @@ namespace Game.Monster
 
             Debug.Log("Game Over");
 
+            GameManager.Instance.GameOver();
+
             gameObject.SetActive(false);
         }
 

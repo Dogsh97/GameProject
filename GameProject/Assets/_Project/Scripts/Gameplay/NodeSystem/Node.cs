@@ -7,10 +7,10 @@ namespace Game.NodeSystem
     public class Node : MonoBehaviour
     {
         [Header("인접한 노드 지정")]
-        [SerializeField] private List<Node> neighbors = new();
+        [SerializeField] protected List<Node> neighbors = new();
 
         [Header("이동 가능 여부")]
-        [SerializeField] private bool isActive = true;
+        [SerializeField] protected bool isActive = true;
 
         public IReadOnlyList<Node> Neighbors => neighbors;
         public bool IsActive => isActive;

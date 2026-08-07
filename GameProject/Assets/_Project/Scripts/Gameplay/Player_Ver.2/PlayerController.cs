@@ -32,14 +32,14 @@ namespace Game.Player
         public PlayerNode CurrentNode => currentNode;
 
         public State CurrentState => state;
+
+        public bool IsHiding => isHiding;
+
         public System.Action<PlayerNode> OnNodeChanged;
 
-        private PlayerNode[] allNodes;
+        private bool isHiding;
 
-        private void Awake()
-        {
-            allNodes = FindObjectsOfType<PlayerNode>();
-        }
+        private HideSpot currentHideSpot;
 
         private void Start()
         {
@@ -52,11 +52,6 @@ namespace Game.Player
 
             currentNode = startNode;
             transform.position = currentNode.Position;
-
-            foreach (PlayerNode node in allNodes)
-            {
-                node.OnSelected += HandleNodeSelected;
-            }
 
             state = State.Idle;
 
@@ -118,21 +113,7 @@ namespace Game.Player
                 rotationSpeed * Time.deltaTime);
         }
 
-
-        private void HandleNodeSelected(PlayerNode node)
-        {
-            MoveToNode(node);
-        }
-
-        private void OnDestroy()
-        {
-            foreach (PlayerNode node in allNodes)
-            {
-                if (node != null)
-                    node.OnSelected -= HandleNodeSelected;
-            }
-        }
-
+        
         private void Arrive(PlayerNode node)
         {
             transform.position = node.Position;
@@ -143,5 +124,42 @@ namespace Game.Player
 
             OnNodeChanged?.Invoke(currentNode);
         }
+
+        public bool Hide(HideSpot hideSpot)
+        {
+            if (CurrentState != State.Idle)
+                return false;
+
+            if (hideSpot == null)
+                return false;
+
+            if (hideSpot.Node != currentNode)
+                return false;
+
+            currentHideSpot = hideSpot;
+
+            isHiding = true;
+
+            transform.position = hideSpot.HidePoint.position;
+
+            OnNodeChanged?.Invoke(currentNode);
+
+            return true;
+        }
+
+        public void ExitHide()
+        {
+            if (!isHiding)
+                return;
+
+            isHiding = false;
+
+            currentHideSpot = null;
+
+            transform.position = currentNode.Position;
+
+            OnNodeChanged?.Invoke(currentNode);
+        }
+
     }
 }

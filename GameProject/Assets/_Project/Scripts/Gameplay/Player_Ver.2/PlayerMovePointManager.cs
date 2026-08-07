@@ -27,8 +27,13 @@ namespace Game.Player
         {
             foreach (PlayerMovePoint point in movePoints)
             {
-                bool connected =
-                    currentNode.IsConnected(point.TargetNode);
+                if (player.CurrentState != PlayerController.State.Idle)
+                {
+                    point.SetVisible(false);
+                    continue;
+                }
+
+                bool connected = currentNode.IsConnected(point.TargetNode);
 
                 point.SetVisible(connected);
             }

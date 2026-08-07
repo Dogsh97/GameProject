@@ -10,7 +10,7 @@ namespace Game.Monster
         private enum State  { Patrol, Detect, Chase, Attack, Disabled }
 
         [Header("Refs")]
-        [SerializeField] private PlayerNodeMover player;
+        [SerializeField] private PlayerController player;
         [SerializeField] private Node currentNode;
         [SerializeField] private PatrolPath patrolPath;
         [SerializeField] private Animator animator;
@@ -51,7 +51,7 @@ namespace Game.Monster
         #region Unity
         private void Awake()
         {
-            if (player == null) player = FindAnyObjectByType<PlayerNodeMover>();
+            if (player == null) player = FindAnyObjectByType<PlayerController>();
 
             if (patrolPath == null) patrolPath = FindAnyObjectByType<PatrolPath>();
             if (animator == null)  animator = GetComponentInChildren<Animator>();
@@ -156,6 +156,10 @@ namespace Game.Monster
         {
             animator?.SetBool("isDetected", false);
 
+            // 플레이어가 숨어있으면 감지하지 않음
+            if (player != null && player.IsHiding)
+                return;
+
             if (distance <= chaseDistance)
             {
                 ChangeState(State.Detect);
@@ -165,6 +169,13 @@ namespace Game.Monster
         private void UpdateChase(float distance)
         {
             animator?.SetBool("isDetected", true);
+
+            // 플레이어가 숨으면 순찰 상태로 복귀
+            if (player != null && player.IsHiding)
+            {
+                ChangeState(State.Patrol);
+                return;
+            }
 
             if (distance > chaseDistance)
             {
@@ -248,12 +259,12 @@ namespace Game.Monster
             if (player == null)
                 return null;
 
-            Node playerNode = player.CurrentNode;
+            PlayerNode playerNode = player.CurrentNode;
 
             if (playerNode == null)
                 return null;
 
-            return ChooseNextNodeWithPatrol(currentNode, playerNode);
+            return ChooseNextNodeWithPatrol(currentNode, playerNode.Position);
         }
 
         private IEnumerator MoveNextNode()
@@ -319,7 +330,7 @@ namespace Game.Monster
             isMoving = false;
         }
 
-        private Node ChooseNextNodeWithPatrol(Node from, Node playerNode)
+        private Node ChooseNextNodeWithPatrol(Node from, Vector3 playerPosition)
         {
             bool hasPatrol =
                 patrolPath != null &&
@@ -327,20 +338,23 @@ namespace Game.Monster
                 followPatrolByDefault;
 
             if (state == State.Chase)
-                return ChooseNextNodeApproach(from, playerNode);
+                return ChooseNextNodeApproach(from, playerPosition);
 
             if (!hasPatrol)
-                return ChooseNextNodeApproach(from, playerNode);
+                return ChooseNextNodeApproach(from, playerPosition);
 
-            Node target = GetPatrolTarget(from, playerNode);
+            Node target = GetPatrolTarget(from, playerPosition);
 
-            return ChooseNextNodeApproach(from, target);
+            if (target == null)
+                return from;
+
+            return ChooseNextNodeApproach(from, target.Position);
         }
 
-        private Node ChooseNextNodeApproach(Node from, Node playerNode)
+        private Node ChooseNextNodeApproach(Node from, Vector3 playerPosition)
         {
             // 현재 거리(월드 거리 기준으로 단계 유사 처리)
-            float curDist = Vector3.Distance(from.Position, playerNode.Position);
+            float curDist = Vector3.Distance(from.Position, playerPosition);
 
             // 후보: 이웃 노드들 중 “조금 더 가까워지는” 후보를 모음
             var neighbors = from.Neighbors;
@@ -366,8 +380,7 @@ namespace Game.Monster
             {
                 Node n = neighbors[i];
                 if (n == null || !n.IsActive) continue;
-
-                float d = Vector3.Distance(n.Position, playerNode.Position);
+                float d = Vector3.Distance(n.Position, playerPosition);
 
                 // 무조건 최단으로 가면 직추적 느낌 → “조금 가까워지는 후보”만 우선
                 bool closer = d < bestDist;
@@ -394,10 +407,10 @@ namespace Game.Monster
             return best;
         }
 
-        private Node GetPatrolTarget(Node from, Node playerNode)
+        private Node GetPatrolTarget(Node from, Vector3 playerPosition)
         {
             Node patrolNext = GetNextPatrolNode();
-            Node patrolBestAhead = GetBestPatrolNodeAheadTowardPlayer(playerNode);
+            Node patrolBestAhead = GetBestPatrolNodeAheadTowardPlayer(playerPosition);
 
             Node chosen = state == State.Patrol
                 ? patrolNext
@@ -435,9 +448,10 @@ namespace Game.Monster
             return list[patrolIndex];
         }
 
-        private Node GetBestPatrolNodeAheadTowardPlayer(Node playerNode)
+        private Node GetBestPatrolNodeAheadTowardPlayer(Vector3 playerPosition)
         {
-            if (patrolPath == null || !patrolPath.IsValid || playerNode == null) return null;
+            if (patrolPath == null || !patrolPath.IsValid)
+                return null;
 
             var list = patrolPath.PathNodes;
             int count = list.Count;
@@ -463,7 +477,7 @@ namespace Game.Monster
                 Node n = list[idx];
                 if (n == null || !n.IsActive) continue;
 
-                float d = Vector3.Distance(n.Position, playerNode.Position);
+                float d = Vector3.Distance(n.Position, playerPosition);
                 if (d < bestDist)
                 {
                     bestDist = d;
