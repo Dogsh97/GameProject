@@ -10,11 +10,14 @@ namespace Game.Monster
         private enum State  { Patrol, Detect, Chase, Attack, Disabled }
 
         [Header("Refs")]
-        [SerializeField] private PlayerController player;
+        [SerializeField] private PlayerNodeMover playerNodeMover;
+        [SerializeField] private PlayerHideController playerHideController;
         [SerializeField] private Node currentNode;
         [SerializeField] private PatrolPath patrolPath;
         [SerializeField] private Animator animator;
         [SerializeField] private EnemyFootstep footStepSound;
+        private Renderer[] monsterRenderers;
+        private Collider[] monsterColliders;
 
         [Header("Move")]
         [SerializeField] private float thinkInterval = 0.35f;
@@ -42,8 +45,17 @@ namespace Game.Monster
         [SerializeField] private float defaultDisableDuration = 6.0f;
         [SerializeField] private Node spawnNode;
 
+        [Header("Spawn")]
+        [SerializeField] private bool spawnOnStart = false;
+        [SerializeField] private float minSpawnDelay = 5f;
+        [SerializeField] private float maxSpawnDelay = 20f;
+
+        private bool isSpawned = false;
+        private bool spawnInitialized = false;
+
         private State state = State.Patrol;
         private Coroutine brain;
+        private Coroutine spawnRoutine;
         private bool isMoving;
         private int patrolIndex = 0;
         private int patrolDir = 1; // 1 정방향, -1 역방향(필요하면 사용)
@@ -51,11 +63,21 @@ namespace Game.Monster
         #region Unity
         private void Awake()
         {
-            if (player == null) player = FindAnyObjectByType<PlayerController>();
+            
+            if (playerNodeMover == null) playerNodeMover = FindAnyObjectByType<PlayerNodeMover>();
 
+            if (playerHideController == null) playerHideController = FindAnyObjectByType<PlayerHideController>();
+
+            if (playerNodeMover == null) Debug.LogError("[MonsterNodeAI_V2] PlayerNodeMover를 찾을 수 없습니다.");
+
+            if (playerHideController == null) Debug.LogWarning("[MonsterNodeAI_V2] PlayerHideController를 찾을 수 없습니다.");
+        
             if (patrolPath == null) patrolPath = FindAnyObjectByType<PatrolPath>();
             if (animator == null)  animator = GetComponentInChildren<Animator>();
             if (footStepSound== null) footStepSound = FindAnyObjectByType<EnemyFootstep>();
+
+            monsterRenderers = GetComponentsInChildren<Renderer>(true);
+            monsterColliders = GetComponentsInChildren<Collider>(true);
         }
 
         private void OnEnable()
@@ -78,19 +100,24 @@ namespace Game.Monster
             }
             else if (currentNode == null)
             {
-                Debug.LogWarning($"{name} : CurrentNode가 지정되지 않았습니다.");
+                Debug.LogWarning(
+                    $"{name} : CurrentNode가 지정되지 않았습니다."
+                );
+
                 return;
-                //AutoBindNearestNode(transform.position);
             }
 
-            AlignPatrolIndexToCurrentNode();
+            isSpawned = false;
 
-            ChangeState(State.Patrol);
+            SetMonsterVisible(false);
 
             if (brain != null)
                 StopCoroutine(brain);
 
-            brain = StartCoroutine(BrainLoop());
+            if (spawnRoutine != null)
+                StopCoroutine(spawnRoutine);
+
+            spawnRoutine = StartCoroutine(SpawnRoutine());
         }
 
         private void Start()
@@ -100,15 +127,16 @@ namespace Game.Monster
 
         private float DistanceToPlayer()
         {
-            if (player == null)
+            if (playerNodeMover == null)
                 return float.MaxValue;
 
-            return Vector3.Distance(transform.position, player.transform.position);
+            return Vector3.Distance(transform.position, playerNodeMover.transform.position);
         }
 
         #region FSM
         private IEnumerator BrainLoop()
         {
+            Debug.Log("[Monster V2] BrainLoop 시작");
             while (true)
             {
                 if (state == State.Disabled)
@@ -117,7 +145,7 @@ namespace Game.Monster
                     continue;
                 }
 
-                if (player == null || currentNode == null)
+                if (playerNodeMover == null || currentNode == null)
                 {
                     yield return null;
                     continue;
@@ -149,6 +177,10 @@ namespace Game.Monster
             if (state == next)
                 return;
 
+            Debug.Log(
+                $"[Monster V2] State : {state} -> {next}"
+            );
+
             state = next;
         }
 
@@ -157,7 +189,7 @@ namespace Game.Monster
             animator?.SetBool("isDetected", false);
 
             // 플레이어가 숨어있으면 감지하지 않음
-            if (player != null && player.IsHiding)
+            if (playerHideController != null && playerHideController.IsHiding)
                 return;
 
             if (distance <= chaseDistance)
@@ -170,14 +202,8 @@ namespace Game.Monster
         {
             animator?.SetBool("isDetected", true);
 
-            // 플레이어가 숨으면 순찰 상태로 복귀
-            if (player != null && player.IsHiding)
-            {
-                ChangeState(State.Patrol);
-                return;
-            }
-
-            if (distance > chaseDistance)
+            if (playerHideController != null &&
+                playerHideController.IsHiding)
             {
                 ChangeState(State.Patrol);
                 return;
@@ -222,7 +248,7 @@ namespace Game.Monster
 
             StopWalking();
 
-            yield return new WaitForSeconds(1.8f);
+            yield return new WaitForSeconds(detectDelay);
 
             animator.SetBool("isDetected", false);
 
@@ -256,15 +282,59 @@ namespace Game.Monster
         #region Movement
         private Node GetNextNode()
         {
-            if (player == null)
+            if (currentNode == null)
                 return null;
 
-            PlayerNode playerNode = player.CurrentNode;
+            // Patrol
+            if (state == State.Patrol)
+            {
+                if (patrolPath != null && patrolPath.IsValid)
+                {
+                    return GetNextPatrolNode();
+                }
 
-            if (playerNode == null)
+                var neighbors = currentNode.Neighbors;
+
+                if (neighbors == null || neighbors.Count == 0)
+                    return null;
+
+                for (int i = 0; i < neighbors.Count; i++)
+                {
+                    Node next = neighbors[i];
+
+                    if (next != null && next.IsActive)
+                        return next;
+                }
+
                 return null;
+            }
 
-            return ChooseNextNodeWithPatrol(currentNode, playerNode.Position);
+            // Chase
+            if (state == State.Chase)
+            {
+                Node playerNode = GetPlayerNode();
+
+                Debug.Log(
+                    $"[Monster V2] Chase / Current = {currentNode?.name} / Player = {playerNode?.name}"
+                );
+
+                if (playerNode == null)
+                    return null;
+
+                Node next = ChooseNextNodeApproach(
+                    currentNode,
+                    playerNode.Position
+                );
+
+                Debug.Log(
+                    $"[Monster V2] Chase Next = {next?.name}"
+                );
+
+                return next;
+            }
+
+            // Patrol / Chase가 아닌 상태에서는 이동하지 않음
+            return null;
         }
 
         private IEnumerator MoveNextNode()
@@ -407,14 +477,20 @@ namespace Game.Monster
             return best;
         }
 
+        private Node GetPlayerNode()
+        {
+            if (playerNodeMover == null)
+                return null;
+
+            return playerNodeMover.CurrentNode;
+        }
+
         private Node GetPatrolTarget(Node from, Vector3 playerPosition)
         {
             Node patrolNext = GetNextPatrolNode();
             Node patrolBestAhead = GetBestPatrolNodeAheadTowardPlayer(playerPosition);
 
-            Node chosen = state == State.Patrol
-                ? patrolNext
-                : patrolBestAhead;
+            Node chosen = state == State.Patrol ? patrolNext : patrolBestAhead;
 
             if (chosen == null)
                 chosen = patrolNext;
@@ -493,7 +569,10 @@ namespace Game.Monster
         #region Combat
         private bool CanAttack()
         {
-            if (player == null)
+            if (playerNodeMover == null)
+                return false;
+
+            if (playerHideController != null && playerHideController.IsHiding)
                 return false;
 
             return DistanceToPlayer() <= attackDistance;
@@ -516,7 +595,53 @@ namespace Game.Monster
         #endregion
 
         #region Utility
-        
+
+        private IEnumerator SpawnRoutine()
+        {
+            if (spawnOnStart)
+            {
+                SpawnMonster();
+                yield break;
+            }
+
+            float delay = Random.Range(
+                minSpawnDelay,
+                maxSpawnDelay
+            );
+
+            yield return new WaitForSeconds(delay);
+
+            SpawnMonster();
+        }
+
+        private void SpawnMonster()
+        {
+            if (isSpawned)
+                return;
+
+            isSpawned = true;
+
+            if (spawnNode != null)
+            {
+                currentNode = spawnNode;
+                transform.position = spawnNode.Position;
+            }
+
+            AlignPatrolIndexToCurrentNode();
+
+            SetMonsterVisible(true);
+
+            ChangeState(State.Patrol);
+
+            if (brain != null)
+                StopCoroutine(brain);
+
+            brain = StartCoroutine(BrainLoop());
+
+            Debug.Log(
+                $"[Monster V2] Spawned after random delay."
+            );
+        }
 
         private void AutoBindNearestNode(Vector3 pos)
         {
@@ -597,6 +722,27 @@ namespace Game.Monster
 
             float dur = duration > 0f ? duration : defaultDisableDuration;
             StartCoroutine(DisableRoutine(dur));
+        }
+
+        private void SetMonsterVisible(bool visible)
+        {
+            if (monsterRenderers != null)
+            {
+                foreach (Renderer renderer in monsterRenderers)
+                {
+                    if (renderer != null)
+                        renderer.enabled = visible;
+                }
+            }
+
+            if (monsterColliders != null)
+            {
+                foreach (Collider collider in monsterColliders)
+                {
+                    if (collider != null)
+                        collider.enabled = visible;
+                }
+            }
         }
 
         #endregion

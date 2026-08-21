@@ -52,7 +52,7 @@ namespace Game.Player
             if (skillCheckUI == null)
                 skillCheckUI = FindAnyObjectByType<SkillCheckUIController>(FindObjectsInactive.Include);
 
-            var monsterAI = FindAnyObjectByType<Game.Monster.MonsterNodeAI>();
+            var monsterAI = FindAnyObjectByType<Game.Monster.MonsterNodeAI_V2>();
             if (monsterAI != null) monsterTf = monsterAI.transform;
         }
 
@@ -84,7 +84,7 @@ namespace Game.Player
             if (gimmick.IsCompleted) return;
             if (!cur.IsActive) return;
 
-            var monsterAI = FindAnyObjectByType<Game.Monster.MonsterNodeAI>();
+            var monsterAI = FindAnyObjectByType<Game.Monster.MonsterNodeAI_V2>();
             if (monsterAI != null && monsterAI.CanAttackNow(transform))
                 return;
 

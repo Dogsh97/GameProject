@@ -9,7 +9,9 @@ namespace Game.Player
         public enum State
         {
             Idle,
-            Moving
+            Moving,
+            Hiding,
+            Gimmick
         }
 
         [Header("Movement")]
