@@ -2,6 +2,7 @@ using System.Collections;
 using UnityEngine;
 using Game.NodeSystem;
 using Game.Player;
+using System.Collections.Generic;
 
 namespace Game.Monster
 {
@@ -28,9 +29,10 @@ namespace Game.Monster
         [Header("Patrol")]
         [SerializeField] private int patrolLookAhead = 3;
         [SerializeField] private bool followPatrolByDefault = true;
+        [SerializeField] private int recentNodeMemory = 3;
 
         [Header("Approach Rule")]
-        [SerializeField] private float randomPickChance = 0.25f; // 예측 불가성
+        [SerializeField] private float randomPickChance = 0; // 예측 불가성
         [SerializeField] private int maxDistanceStepPerThink = 1; // 한 번에 너무 확 좁히지 않게(점진)
 
         [Header("Detection")]
@@ -59,6 +61,8 @@ namespace Game.Monster
         private bool isMoving;
         private int patrolIndex = 0;
         private int patrolDir = 1; // 1 정방향, -1 역방향(필요하면 사용)
+        private Node previousNode;
+        private readonly List<Node> recentNodes = new List<Node>();
 
         #region Unity
         private void Awake()
@@ -288,25 +292,7 @@ namespace Game.Monster
             // Patrol
             if (state == State.Patrol)
             {
-                if (patrolPath != null && patrolPath.IsValid)
-                {
-                    return GetNextPatrolNode();
-                }
-
-                var neighbors = currentNode.Neighbors;
-
-                if (neighbors == null || neighbors.Count == 0)
-                    return null;
-
-                for (int i = 0; i < neighbors.Count; i++)
-                {
-                    Node next = neighbors[i];
-
-                    if (next != null && next.IsActive)
-                        return next;
-                }
-
-                return null;
+                return GetNextPatrolNodeByNeighbors();
             }
 
             // Chase
@@ -337,6 +323,73 @@ namespace Game.Monster
             return null;
         }
 
+        private Node GetNextPatrolNodeByNeighbors()
+        {
+            if (currentNode == null)
+                return null;
+
+            var neighbors = currentNode.Neighbors;
+
+            if (neighbors == null || neighbors.Count == 0)
+                return null;
+
+            // 1차 후보:
+            // 최근 방문 Node와 previousNode를 모두 제외
+            List<Node> candidates = new List<Node>();
+
+            for (int i = 0; i < neighbors.Count; i++)
+            {
+                Node node = neighbors[i];
+
+                if (node == null || !node.IsActive)
+                    continue;
+
+                if (node == previousNode)
+                    continue;
+
+                if (recentNodes.Contains(node))
+                    continue;
+
+                candidates.Add(node);
+            }
+
+            // 2차 후보:
+            // 최근 방문 기록은 무시하고 previousNode만 제외
+            if (candidates.Count == 0)
+            {
+                for (int i = 0; i < neighbors.Count; i++)
+                {
+                    Node node = neighbors[i];
+
+                    if (node == null || !node.IsActive)
+                        continue;
+
+                    if (node == previousNode)
+                        continue;
+
+                    candidates.Add(node);
+                }
+            }
+
+            // 3차 후보:
+            // 정말 다른 선택지가 없다면 모든 활성 Node 허용
+            if (candidates.Count == 0)
+            {
+                for (int i = 0; i < neighbors.Count; i++)
+                {
+                    Node node = neighbors[i];
+
+                    if (node != null && node.IsActive)
+                        candidates.Add(node);
+                }
+            }
+
+            if (candidates.Count == 0)
+                return null;
+
+            return candidates[Random.Range(0, candidates.Count)];
+        }
+
         private IEnumerator MoveNextNode()
         {
             if (isMoving)
@@ -349,7 +402,15 @@ namespace Game.Monster
 
             yield return MoveToNode(next);
 
+            previousNode = currentNode;
             currentNode = next;
+
+            recentNodes.Add(currentNode);
+
+            while (recentNodes.Count > recentNodeMemory)
+            {
+                recentNodes.RemoveAt(0);
+            }
         }
 
         private void Move(Vector3 target)
@@ -423,58 +484,160 @@ namespace Game.Monster
 
         private Node ChooseNextNodeApproach(Node from, Vector3 playerPosition)
         {
-            // 현재 거리(월드 거리 기준으로 단계 유사 처리)
-            float curDist = Vector3.Distance(from.Position, playerPosition);
+            if (from == null)
+                return null;
 
-            // 후보: 이웃 노드들 중 “조금 더 가까워지는” 후보를 모음
+            Node playerNode = GetPlayerNode();
+
+            if (playerNode == null)
+                return null;
+
+            // 이미 플레이어 Node에 도착했다면 이동하지 않음
+            if (from == playerNode)
+                return from;
+
+            Node nextNode = FindNextNodeByBFS(from, playerNode);
+
+            if (nextNode != null)
+                return nextNode;
+
+            // BFS 경로를 찾지 못했다면 기존처럼
+            // 현재 Node의 활성 Neighbor 중 하나를 선택
             var neighbors = from.Neighbors;
-            if (neighbors == null || neighbors.Count == 0) return from;
 
-            Node best = from;
-            float bestDist = curDist;
+            if (neighbors == null || neighbors.Count == 0)
+                return from;
 
-            // 랜덤 픽(예측 불가성)
-            if (Random.value < randomPickChance)
-            {
-                // 활성 이웃 중 하나
-                for (int t = 0; t < 6; t++)
-                {
-                    Node r = neighbors[Random.Range(0, neighbors.Count)];
-                    if (r != null && r.IsActive) return r;
-                }
-            }
+            List<Node> candidates = new List<Node>();
 
-            // 점진 접근: “너무 확 좁히지 않도록” 제한
-            // world 거리라 완벽한 단계는 아니지만 체감은 충분히 점진적으로 됨.
             for (int i = 0; i < neighbors.Count; i++)
             {
-                Node n = neighbors[i];
-                if (n == null || !n.IsActive) continue;
-                float d = Vector3.Distance(n.Position, playerPosition);
+                Node node = neighbors[i];
 
-                // 무조건 최단으로 가면 직추적 느낌 → “조금 가까워지는 후보”만 우선
-                bool closer = d < bestDist;
-                bool notTooHugeJump = (bestDist - d) <= (maxDistanceStepPerThink * 10f);
-                // ↑ 이 숫자는 그래프 스케일에 맞춰 조절 (노드 간격이 2~5면 10f 넉넉)
+                if (node == null || !node.IsActive)
+                    continue;
 
-                if (closer && notTooHugeJump)
-                {
-                    bestDist = d;
-                    best = n;
-                }
+                candidates.Add(node);
             }
 
-            // 가까워지는 후보가 없다면 그냥 활성 이웃 중 하나(막히지 않게)
-            if (best == from)
+            if (candidates.Count == 0)
+                return from;
+
+            return candidates[Random.Range(0, candidates.Count)];
+        }
+
+        private Node FindNextNodeByBFS(Node startNode, Node targetNode)
+        {
+            if (startNode == null || targetNode == null)
+                return null;
+
+            Queue<Node> queue = new Queue<Node>();
+            HashSet<Node> visited = new HashSet<Node>();
+            Dictionary<Node, Node> previous = new Dictionary<Node, Node>();
+
+            queue.Enqueue(startNode);
+            visited.Add(startNode);
+
+            while (queue.Count > 0)
             {
+                Node current = queue.Dequeue();
+
+                if (current == targetNode)
+                    break;
+
+                var neighbors = current.Neighbors;
+
+                if (neighbors == null)
+                    continue;
+
                 for (int i = 0; i < neighbors.Count; i++)
                 {
-                    Node n = neighbors[i];
-                    if (n != null && n.IsActive) return n;
+                    Node next = neighbors[i];
+
+                    if (next == null)
+                        continue;
+
+                    if (!next.IsActive)
+                        continue;
+
+                    if (visited.Contains(next))
+                        continue;
+
+                    visited.Add(next);
+                    previous[next] = current;
+
+                    queue.Enqueue(next);
                 }
             }
 
-            return best;
+            if (!visited.Contains(targetNode))
+            {
+                string visitedLog = "";
+
+                foreach (Node node in visited)
+                {
+                    if (node == null)
+                        continue;
+
+                    visitedLog += node.name + " -> ";
+                }
+
+                Debug.Log(
+                    $"[Monster BFS] 경로 없음\n" +
+                    $"Start = {startNode.name}\n" +
+                    $"Target = {targetNode.name}\n" +
+                    $"Visited = {visitedLog}"
+                );
+
+                return null;
+            }
+
+            // Target → Start 방향으로 경로 복원
+            List<Node> path = new List<Node>();
+
+            Node step = targetNode;
+
+            path.Add(step);
+
+            while (previous.ContainsKey(step))
+            {
+                step = previous[step];
+                path.Add(step);
+            }
+
+            // Start → Target 방향으로 뒤집기
+            path.Reverse();
+
+            // 전체 경로 로그
+            string pathLog = "";
+
+            for (int i = 0; i < path.Count; i++)
+            {
+                pathLog += path[i].name;
+
+                if (i < path.Count - 1)
+                    pathLog += " -> ";
+            }
+
+            Debug.Log(
+                $"[Monster BFS] Start = {startNode.name} / Target = {targetNode.name}\n" +
+                $"[Monster BFS] Path = {pathLog}"
+            );
+
+            // Start 다음의 첫 번째 Node가 실제 이동할 Node
+            if (path.Count >= 2)
+            {
+                Node nextNode = path[1];
+
+                Debug.Log(
+                    $"[Monster BFS] Next = {nextNode.name}"
+                );
+
+                return nextNode;
+            }
+
+            // Start == Target인 경우
+            return startNode;
         }
 
         private Node GetPlayerNode()
@@ -627,6 +790,9 @@ namespace Game.Monster
                 transform.position = spawnNode.Position;
             }
 
+            previousNode = null;
+            recentNodes.Clear();
+
             AlignPatrolIndexToCurrentNode();
 
             SetMonsterVisible(true);
@@ -683,6 +849,9 @@ namespace Game.Monster
 
         private void Respawn()
         {
+            previousNode = null;
+            recentNodes.Clear();
+
             if (spawnNode != null)
             {
                 currentNode = spawnNode;

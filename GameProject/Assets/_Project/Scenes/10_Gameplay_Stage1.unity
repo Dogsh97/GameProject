@@ -1196,6 +1196,7 @@ MonoBehaviour:
   arriveDistance: 0.05
   patrolLookAhead: 3
   followPatrolByDefault: 1
+  recentNodeMemory: 3
   randomPickChance: 0.25
   maxDistanceStepPerThink: 1
   chaseDistance: 10
